@@ -68,5 +68,14 @@ IMAGE_INSTALL:append = "${@bb.utils.contains('KINARA', '1', ' \
 # Machine-guarded: no other machine using this image has the module.
 IMAGE_INSTALL:append:imx95-phyflex-phyvip-1 = " ti-cc33xx-firmware"
 
+# WLAN client auto-connect. Only pulled in when credentials are actually
+# configured, so a build without them stays clean instead of shipping an empty
+# wpa_supplicant.conf. Set in build/conf/local.conf, which is not part of any
+# layer repository:
+#
+#   PHYVIP_WLAN_SSID = "MeinAP"
+#   PHYVIP_WLAN_PSK  = "geheim"
+IMAGE_INSTALL:append:imx95-phyflex-phyvip-1 = "${@' phyvip-wlan-config' if d.getVar('PHYVIP_WLAN_SSID') else ''}"
+
 # Only exclude conflicting package when Kinara stack is enabled.
 PACKAGE_EXCLUDE:append = "${@bb.utils.contains('KINARA', '1', ' gstreamer1.0-plugins-good-xingmux', '', d)}"
