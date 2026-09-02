@@ -1,0 +1,3 @@
+# Vendor documentation kept locally only -- the schematics under docs/ are
+# marked "internal use only" and must not end up in the repository history.
+docs/

@@ -1,0 +1,40 @@
+From b56c876110f504288f3ae0d862a60f4c96236c57 Mon Sep 17 00:00:00 2001
+From: Martin Podolszki <m.podolszki@phytec.de>
+Date: Mon, 22 Jun 2026 09:25:22 +0200
+Subject: [PATCH 1/2] wifi: cc33xx: update driver to match cc33xx SDK 1.0.2.10
+ In order to use the BLE and latest firmware, the driver needs to be updated.
+ Update the CC33XX WiFi driver to match the latest CC33XX SDK 1.0.2.10 from
+ downstream.
+
+Upstream-Status: Pending
+
+Signed-off-by: Sabeeh Khan <sabeeh-khan@ti.com>
+---
+ drivers/net/wireless/ti/Kconfig  | 1 +
+ drivers/net/wireless/ti/Makefile | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/drivers/net/wireless/ti/Kconfig b/drivers/net/wireless/ti/Kconfig
+index 3fcd9e395f72..fa7214d6018c 100644
+--- a/drivers/net/wireless/ti/Kconfig
++++ b/drivers/net/wireless/ti/Kconfig
+@@ -14,6 +14,7 @@ if WLAN_VENDOR_TI
+ source "drivers/net/wireless/ti/wl1251/Kconfig"
+ source "drivers/net/wireless/ti/wl12xx/Kconfig"
+ source "drivers/net/wireless/ti/wl18xx/Kconfig"
++source "drivers/net/wireless/ti/cc33xx/Kconfig"
+ 
+ # keep last for automatic dependencies
+ source "drivers/net/wireless/ti/wlcore/Kconfig"
+diff --git a/drivers/net/wireless/ti/Makefile b/drivers/net/wireless/ti/Makefile
+index 05ee016594f8..4356f58b4b98 100644
+--- a/drivers/net/wireless/ti/Makefile
++++ b/drivers/net/wireless/ti/Makefile
+@@ -3,3 +3,4 @@ obj-$(CONFIG_WLCORE)			+= wlcore/
+ obj-$(CONFIG_WL12XX)			+= wl12xx/
+ obj-$(CONFIG_WL1251)			+= wl1251/
+ obj-$(CONFIG_WL18XX)			+= wl18xx/
++obj-$(CONFIG_CC33XX)			+= cc33xx/
+-- 
+2.43.0
+

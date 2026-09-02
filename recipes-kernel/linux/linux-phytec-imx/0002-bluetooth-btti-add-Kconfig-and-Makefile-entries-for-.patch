@@ -1,0 +1,82 @@
+From 70d1ffddcddba7044f64140d876f4ca9a82e6322 Mon Sep 17 00:00:00 2001
+From: Martin Podolszki <m.podolszki@phytec.de>
+Date: Mon, 22 Jun 2026 12:09:03 +0200
+Subject: [PATCH 2/2] bluetooth: btti: add Kconfig and Makefile entries for TI
+ CC33xx BT
+
+The btti driver sources were added without build system integration.
+Add the missing Kconfig symbols and Makefile rules:
+
+- BT_TI: core driver (btti_main.o + btti_debugfs.o)
+- BT_TI_SDIO: SDIO transport (btti_sdio.o), depends on MMC
+- BT_TI_UART: UART transport (btti_uart.o), selects BT_HCIUART_H4
+  (required because h4_recv_buf() is provided via hci_uart.h in 6.18)
+
+Without these entries CONFIG_BT_TI* has no effect and all btti sources
+are silently ignored by the build system.
+
+Upstream-Status: Pending
+Signed-off-by: Martin Podolszki <m.podolszki@phytec.de>
+---
+ drivers/bluetooth/Kconfig  | 31 +++++++++++++++++++++++++++++++
+ drivers/bluetooth/Makefile |  6 ++++++
+ 2 files changed, 37 insertions(+)
+
+diff --git a/drivers/bluetooth/Kconfig b/drivers/bluetooth/Kconfig
+index 7df69ccb6600..b4d8b933fb77 100644
+--- a/drivers/bluetooth/Kconfig
++++ b/drivers/bluetooth/Kconfig
+@@ -511,4 +511,35 @@ config BT_INTEL_PCIE
+ 
+ 	  Say Y here to compiler support for Intel Bluetooth PCIe device into
+ 	  the kernel or say M to compile it as module (btintel_pcie)
++
++config BT_TI
++	tristate "TI Bluetooth driver support"
++	help
++	  The core driver to support TI Bluetooth devices.
++
++	  Say Y here to compile TI Bluetooth driver
++	  into the kernel or say M to compile it as module.
++
++config BT_TI_SDIO
++	tristate "TI BT-over-SDIO driver"
++	depends on BT_TI && MMC
++	select FW_LOADER
++	select WANT_DEV_COREDUMP
++	help
++	  The driver for TI Bluetooth chipsets with SDIO interface.
++
++	  Say Y here to compile support for TI BT-over-SDIO driver
++	  into the kernel or say M to compile it as module.
++
++config BT_TI_UART
++	tristate "TI BT-over-UART driver"
++	depends on SERIAL_DEV_BUS
++	select BT_HCIUART_H4
++	help
++	  Bluetooth HCI UART driver for CC33XX TI devices.
++	  Required to use CC33XX with UART interface.
++
++	  Say Y here to compile support for CC33XX UART devices into the
++	  kernel or say M to compile it as module.
++
+ endmenu
+diff --git a/drivers/bluetooth/Makefile b/drivers/bluetooth/Makefile
+index 81856512ddd0..c86d07b8db78 100644
+--- a/drivers/bluetooth/Makefile
++++ b/drivers/bluetooth/Makefile
+@@ -52,4 +52,10 @@ hci_uart-$(CONFIG_BT_HCIUART_QCA)	+= hci_qca.o
+ hci_uart-$(CONFIG_BT_HCIUART_AG6XX)	+= hci_ag6xx.o
+ hci_uart-$(CONFIG_BT_HCIUART_MRVL)	+= hci_mrvl.o
+ hci_uart-$(CONFIG_BT_HCIUART_AML)	+= hci_aml.o
++obj-$(CONFIG_BT_TI)			+= btti.o
++obj-$(CONFIG_BT_TI_SDIO)		+= btti_sdio.o
++obj-$(CONFIG_BT_TI_UART)		+= btti_uart.o
++btti-y				:= btti_main.o
++btti-$(CONFIG_DEBUG_FS)		+= btti_debugfs.o
++
+ hci_uart-objs				:= $(hci_uart-y)
+-- 
+2.43.0
+

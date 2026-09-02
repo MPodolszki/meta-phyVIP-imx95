@@ -1,0 +1,151 @@
+From bac9d17d39009c52a60048f48df438b4ae2a8410 Mon Sep 17 00:00:00 2001
+From: Martin Podolszki <m.podolszki@phytec.de>
+Date: Mon, 22 Jun 2026 12:08:49 +0200
+Subject: [PATCH 1/2] drivers: cc33xx: forward port cc33xx 1.0.2.10 SDK to
+ 6.18.y
+
+Update the cc33xx WiFi and btti Bluetooth drivers to compile against
+kernel 6.18:
+
+- btti_debugfs.c: make btti_format_buffer() static
+- btti_main.c: use hci_set_quirk() instead of set_bit() for HCI quirks
+- btti_uart.c: replace removed h4_recv.h with hci_uart.h; embed struct
+  hci_uart in btti_uart_dev for h4_recv_buf() compatibility
+- cc33xx/main.c: add missing int radio_idx parameter to op_config(),
+  op_set_frag_threshold(), and op_set_rts_threshold(); rename
+  sta_rc_update to link_sta_rc_update and update callback to use
+  ieee80211_link_sta instead of ieee80211_sta
+
+Upstream-Status: Pending
+Signed-off-by: Martin Podolszki <m.podolszki@phytec.de>
+---
+ drivers/bluetooth/btti_debugfs.c      |  2 +-
+ drivers/bluetooth/btti_main.c         |  2 +-
+ drivers/bluetooth/btti_uart.c         |  6 ++++--
+ drivers/net/wireless/ti/cc33xx/main.c | 14 +++++++-------
+ 4 files changed, 13 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/bluetooth/btti_debugfs.c b/drivers/bluetooth/btti_debugfs.c
+index 0cce15066603..fa88c62a300e 100644
+--- a/drivers/bluetooth/btti_debugfs.c
++++ b/drivers/bluetooth/btti_debugfs.c
+@@ -33,7 +33,7 @@ int btti_debugfs_if_prepare_command(u8 cmd_type,\
+ 
+ #define DEBUGFS_FORMAT_BUFFER_SIZE 256
+ 
+-int btti_format_buffer(char __user *userbuf, size_t count,
++static int btti_format_buffer(char __user *userbuf, size_t count,
+ 			 loff_t *ppos, char *fmt, ...)
+ {
+ 	va_list args;
+diff --git a/drivers/bluetooth/btti_main.c b/drivers/bluetooth/btti_main.c
+index be339605ad92..29c9f25189a4 100644
+--- a/drivers/bluetooth/btti_main.c
++++ b/drivers/bluetooth/btti_main.c
+@@ -363,7 +363,7 @@ int btti_hci_register_hdev(struct btti_private *private_data)
+ 	hdev->setup = btti_hci_if_setup;
+ 	SET_HCIDEV_DEV(hdev, &sdiodev->func->dev);
+ 
+-	set_bit(HCI_QUIRK_NON_PERSISTENT_SETUP, &hdev->quirks);
++	hci_set_quirk(hdev, HCI_QUIRK_NON_PERSISTENT_SETUP);
+ 
+ 	ret = hci_register_dev(hdev);
+ 	if (ret < 0) {
+diff --git a/drivers/bluetooth/btti_uart.c b/drivers/bluetooth/btti_uart.c
+index d450e1f05c8f..d29679bcc708 100644
+--- a/drivers/bluetooth/btti_uart.c
++++ b/drivers/bluetooth/btti_uart.c
+@@ -24,7 +24,7 @@
+ #include <net/bluetooth/bluetooth.h>
+ #include <net/bluetooth/hci_core.h>
+ 
+-#include "h4_recv.h"
++#include "hci_uart.h"
+ 
+ #define VERSION "0.84"
+ 
+@@ -88,6 +88,7 @@ static const char *event_to_string(enum sm_event event)
+ 
+ struct btti_uart_dev {
+ 	struct hci_dev *hdev;
++	struct hci_uart huart;
+ 	struct serdev_device *serdev;
+ 	struct regulator *reg;
+ 	struct notifier_block nb;
+@@ -229,6 +230,7 @@ static int btti_uart_register_hci_device(struct btti_uart_dev *bdev)
+ 	}
+ 
+ 	bdev->hdev = hdev;
++	bdev->huart.hdev = hdev;
+ 	return ret;
+ }
+ 
+@@ -470,7 +472,7 @@ static size_t btti_uart_receive_buf(struct serdev_device *serdev, const u8 *data
+ 		return btti_uart_wakeup_event_match(serdev, data, count);
+ 	}
+ 
+-	bdev->rx_skb = h4_recv_buf(bdev->hdev, bdev->rx_skb, data, count,
++	bdev->rx_skb = h4_recv_buf(&bdev->huart, bdev->rx_skb, data, count,
+ 				   vnd->recv_pkts, vnd->recv_pkts_cnt);
+ 	if (IS_ERR(bdev->rx_skb)) {
+ 		int err = PTR_ERR(bdev->rx_skb);
+diff --git a/drivers/net/wireless/ti/cc33xx/main.c b/drivers/net/wireless/ti/cc33xx/main.c
+index 668cab80bf0e..ef1e03c9c2c5 100644
+--- a/drivers/net/wireless/ti/cc33xx/main.c
++++ b/drivers/net/wireless/ti/cc33xx/main.c
+@@ -2801,7 +2801,7 @@ static int cc33xx_config_vif(struct cc33xx *cc, struct cc33xx_vif *wlvif,
+ 	return 0;
+ }
+ 
+-static int cc33xx_op_config(struct ieee80211_hw *hw, u32 changed)
++static int cc33xx_op_config(struct ieee80211_hw *hw, int radio_idx, u32 changed)
+ {
+ 	struct cc33xx *cc = hw->priv;
+ 	struct cc33xx_vif *wlvif;
+@@ -3408,12 +3408,12 @@ static int cc33xx_op_sched_scan_stop(struct ieee80211_hw *hw,
+ 	return 0;
+ }
+ 
+-static int cc33xx_op_set_frag_threshold(struct ieee80211_hw *hw, u32 value)
++static int cc33xx_op_set_frag_threshold(struct ieee80211_hw *hw, int radio_idx, u32 value)
+ {
+ 	return 0;
+ }
+ 
+-static int cc33xx_op_set_rts_threshold(struct ieee80211_hw *hw, u32 value)
++static int cc33xx_op_set_rts_threshold(struct ieee80211_hw *hw, int radio_idx, u32 value)
+ {
+ 	return 0;
+ }
+@@ -4827,7 +4827,7 @@ static int cc33xx_op_cancel_remain_on_channel(struct ieee80211_hw *hw,
+ 
+ static void cc33xx_op_sta_rc_update(struct ieee80211_hw *hw,
+ 				    struct ieee80211_vif *vif,
+-				    struct ieee80211_sta *sta,
++				    struct ieee80211_link_sta *link_sta,
+ 				    u32 changed)
+ {
+ 	struct cc33xx_vif *wlvif = cc33xx_vif_to_data(vif);
+@@ -4836,8 +4836,8 @@ static void cc33xx_op_sta_rc_update(struct ieee80211_hw *hw,
+ 		return;
+ 
+ 	/* this callback is atomic, so schedule a new work */
+-	wlvif->rc_update_bw = sta->deflink.bandwidth;
+-	memcpy(&wlvif->rc_ht_cap, &sta->deflink.ht_cap, sizeof(sta->deflink.ht_cap));
++	wlvif->rc_update_bw = link_sta->sta->deflink.bandwidth;
++	memcpy(&wlvif->rc_ht_cap, &link_sta->sta->deflink.ht_cap, sizeof(link_sta->sta->deflink.ht_cap));
+ 	ieee80211_queue_work(hw, &wlvif->rc_update_work);
+ }
+ 
+@@ -4985,7 +4985,7 @@ static const struct ieee80211_ops cc33xx_ops = {
+ 	.assign_vif_chanctx = cc33xx_op_assign_vif_chanctx,
+ 	.unassign_vif_chanctx = cc33xx_op_unassign_vif_chanctx,
+ 	.switch_vif_chanctx = cc33xx_op_switch_vif_chanctx,
+-	.sta_rc_update = cc33xx_op_sta_rc_update,
++	.link_sta_rc_update = cc33xx_op_sta_rc_update,
+ 	.sta_statistics = cc33xx_op_sta_statistics,
+ 	.get_expected_throughput = cc33xx_op_get_expected_throughput,
+ 	CFG80211_TESTMODE_CMD(cc33xx_tm_cmd)
+-- 
+2.43.0
+

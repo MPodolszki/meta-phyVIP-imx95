@@ -1,0 +1,52 @@
+From 65c81f5ce078987db21677dc7fc8d6faf136837b Mon Sep 17 00:00:00 2001
+From: Martin Podolszki <m.podolszki@phytec.de>
+Date: Fri, 29 May 2026 11:26:28 +0200
+Subject: [PATCH] drm: bridge: imx95-ldb: skip clk_round_rate check for
+ DETECT+EDID bridges
+
+For bridges exporting DRM_BRIDGE_OP_DETECT and DRM_BRIDGE_OP_EDID (e.g.
+HDMI converters like IT6263), skip the pixel clock validation in
+mode_valid. The LDBPLL is unconfigured at probe time (rate=0), causing
+clk_round_rate() to return 0 and falsely reject all EDID modes with
+MODE_CLOCK_RANGE. The actual PLL configuration happens in mode_set via
+clk_set_rate() when a mode is committed.
+
+Upstream-Status: Inappropriate [board-specific HDMI bridge bring-up behavior]
+
+Signed-off-by: Martin Podolszki <m.podolszki@phytec.de>
+---
+ drivers/gpu/drm/bridge/imx/imx95-ldb.c | 17 ++++++++---------
+ 1 file changed, 8 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/imx/imx95-ldb.c b/drivers/gpu/drm/bridge/imx/imx95-ldb.c
+index 3835dd633..0a813a11d 100644
+--- a/drivers/gpu/drm/bridge/imx/imx95-ldb.c
++++ b/drivers/gpu/drm/bridge/imx/imx95-ldb.c
+@@ -336,16 +336,15 @@ imx95_ldb_bridge_mode_valid(struct drm_bridge *bridge,
+ 	while (drm_bridge_get_next_bridge(next_bridge))
+ 		next_bridge = drm_bridge_get_next_bridge(next_bridge);
+ 
++	/*
++	 * For bridges with DETECT+EDID (e.g. HDMI converters like IT6263),
++	 * skip the pixel clock validation: the LDBPLL is unconfigured at
++	 * probe time (rate=0), so clk_round_rate() returns 0 and rejects
++	 * all EDID modes. clk_set_rate() in mode_set configures the PLL.
++	 */
+ 	if ((next_bridge->ops & DRM_BRIDGE_OP_DETECT) &&
+-	    (next_bridge->ops & DRM_BRIDGE_OP_EDID)) {
+-		if (imx95_ldb->clk_di[ldb_ch->chno]) {
+-			pixel_clock_rate = mode->clock * 1000;
+-			rounded_rate = clk_round_rate(imx95_ldb->clk_di[ldb_ch->chno],
+-						      pixel_clock_rate);
+-			if (rounded_rate != pixel_clock_rate)
+-				return MODE_CLOCK_RANGE;
+-		}
+-	}
++	    (next_bridge->ops & DRM_BRIDGE_OP_EDID))
++		return MODE_OK;
+ 
+ 	return MODE_OK;
+ }
+-- 
+2.43.0
+

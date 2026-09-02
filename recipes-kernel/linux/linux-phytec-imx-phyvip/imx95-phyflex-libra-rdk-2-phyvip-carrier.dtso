@@ -1,0 +1,101 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * phyVIP carrier adaptation for MACHINE imx95-phyflex-libra-rdk-2.
+ *
+ * The machine boots imx95-phyflex-libra-rdk.dtb, which describes the PHYTEC
+ * Libra RDK carrier. The phyVIP carrier (PV-05832-001-1645-0-004) carries the
+ * same phyFLEX-i.MX95 FPSC SoM but a different baseboard -- in particular it
+ * has NO I2C GPIO expanders. Verified on hardware:
+ *
+ *   i2cdetect -y -r 2   ->  0x21 absent   (426b0000.i2c, gpio_expander1)
+ *   i2cdetect -y -r 3   ->  0x21 absent   (42530000.i2c, gpio_expander2)
+ *
+ * Both ti,tcal6416 nodes therefore never probe, and fw_devlink parks every
+ * consumer in deferred probe forever (/sys/kernel/debug/devices_deferred):
+ *
+ *   4c300000.pcie   platform: supplier 2-0021 not ready
+ *   4c380000.pcie   platform: supplier 2-0021 not ready
+ *   can-phy1/2      platform: supplier 3-0021 not ready
+ *   443a0000.can, 425b0000.can, 3-0047, 5-0052
+ *
+ * The PCIe fallout is the painful one: 4c300000.pcie is PCIE1, where the
+ * Kinara Ara-2 sits (schematic sheets 21-23), so the root complex never comes
+ * up and lspci shows nothing but the SoC-internal NETC domains. PCIE1_nPERST
+ * itself is fine -- it comes straight from the SoC (gpio1[10], net
+ * X_PCIE1_nPERST) -- it is only the optional wake-gpios that blocks probe.
+ *
+ * sfp, panel-lvds0, backlight and oscillator-mclk-gated also consume the
+ * expanders but are already status = "disabled" in the base DT, so they are
+ * left untouched here.
+ *
+ * NOTE ON STYLE: this overlay never uses /delete-property/. dtc accepts it,
+ * but libfdt's overlay apply (fdtoverlay, and U-Boot's fdt_overlay_apply)
+ * silently ignores deletions -- verified by merging this overlay with
+ * fdtoverlay and decompiling the result. Properties that must go away are
+ * therefore overwritten with an empty value, which the consumers' DT helpers
+ * report as -ENOENT / "not present".
+ */
+
+/dts-v1/;
+/plugin/;
+
+/*
+ * Not populated on this carrier. Disabling the supplier is enough to stop
+ * fw_devlink from creating the device links (of_link_to_phandle() skips
+ * unavailable nodes), which is what unblocks the CAN transceivers and the
+ * USB-C controller below.
+ */
+&gpio_expander1 {
+	status = "disabled";
+};
+
+&gpio_expander2 {
+	status = "disabled";
+};
+
+/*
+ * PCIE1_nWAKE / PCIE2_nWAKE do not exist on the phyVIP carrier. Disabling the
+ * expander is NOT sufficient here: dw-pcie still calls gpiod_get_optional(),
+ * which returns -EPROBE_DEFER when the gpiochip is absent rather than NULL.
+ * An empty property makes of_get_named_gpiod_flags() fail with -ENOENT, which
+ * the _optional() wrapper turns into NULL. reset-gpios stays on gpio1 and is
+ * correct for this carrier.
+ */
+&pcie0 {
+	wake-gpios = <>;
+};
+
+&pcie1 {
+	wake-gpios = <>;
+};
+
+/*
+ * CAN1_STBY / CAN2_STBY are expander lines on the Libra RDK with no equivalent
+ * net on phyVIP. devm_of_phy_optional_get() maps an unavailable phy node to
+ * NULL, so disabling the transceivers is enough for flexcan1/flexcan2 to
+ * probe. The transceivers are simply not software-controllable here.
+ */
+&can_transceiver1 {
+	status = "disabled";
+};
+
+&can_transceiver2 {
+	status = "disabled";
+};
+
+/* HD3SS3220 USB-C controller: not fitted (i2cdetect: 0x47 absent on i2c-3). */
+&{/soc/bus@42000000/i2c@42530000/usb-typec@47} {
+	status = "disabled";
+};
+
+/*
+ * RV3028 RTC is present, but its nINT is routed to gpio_expander2 on the Libra
+ * RDK. i2c_device_probe() resolves the IRQ via of_irq_get(), which returns
+ * -EPROBE_DEFER while the interrupt controller is missing -- so the node has to
+ * lose its interrupt explicitly. Alarm/wakeup is unavailable until the phyVIP
+ * routing for RTC_INT is confirmed (gpio2[18] is named RTC_INT and is the
+ * likely candidate).
+ */
+&rv3028 {
+	interrupts = <>;
+};
