@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright 2026 PHYTEC Messtechnik GmbH
+ *
+ * PHYTEC phyVIP carrier (PV-05832-001-1645-0-004) with phyFLEX-i.MX95 FPSC.
+ *
+ * The phyVIP and the Libra RDK use the same SoM, so this board is described as
+ * a delta on top of the RDK device tree rather than as a copy of it. Everything
+ * SoM-side is inherited unchanged; what differs is the carrier.
+ *
+ * The one structural difference is that the phyVIP has NO I2C GPIO expanders.
+ * The RDK fits two ti,tcal6416 at 0x21 and hangs a fair amount of board control
+ * off them; on phyVIP neither responds, verified on hardware:
+ *
+ *   i2cdetect -y -r 2   ->  0x21 absent   (426b0000.i2c, gpio_expander1)
+ *   i2cdetect -y -r 3   ->  0x21 absent   (42530000.i2c, gpio_expander2)
+ *
+ * Left as-is, both nodes fail to probe and fw_devlink parks every consumer in
+ * permanent deferred probe -- including 4c300000.pcie, which is the root
+ * complex the Kinara Ara-2 sits behind (schematic sheets 21-23). That is why
+ * the accelerator did not appear in lspci at all: not a driver or firmware
+ * problem, the controller simply never came up.
+ *
+ * sfp, panel-lvds0, backlight and oscillator-mclk-gated also reference the
+ * expanders, but they are already disabled in the RDK device tree, so their
+ * references are harmless and are deliberately left in place.
+ */
+
+/dts-v1/;
+
+#include "imx95-phyflex-libra-rdk.dts"
+
+/ {
+	/*
+	 * The RDK compatible is kept in the list on purpose: U-Boot and the
+	 * bootloader-side fixups match on it, and the SoM half of the board is
+	 * genuinely identical.
+	 */
+	compatible = "phytec,imx95-phyflex-phyvip",
+		     "phytec,imx95-phyflex-libra-rdk",
+		     "phytec,imx95-phyflex-fpsc-g", "fsl,imx95";
+	model = "PHYTEC phyVIP phyFLEX-i.MX95 FPSC";
+};
+
+/* Not populated on this carrier. */
+&gpio_expander1 {
+	status = "disabled";
+};
+
+&gpio_expander2 {
+	status = "disabled";
+};
+
+/*
+ * PCIE1_nWAKE / PCIE2_nWAKE have no net on phyVIP. Only the wake line comes
+ * from an expander -- PCIE1_nPERST is a SoC pin (gpio1[10], net X_PCIE1_nPERST,
+ * schematic sheet 23) and stays as the RDK has it.
+ *
+ * These two properties are what actually blocked the Kinara Ara-2: dw-pcie
+ * calls gpiod_get_optional() for them, which returns -EPROBE_DEFER rather than
+ * NULL while the gpiochip is missing, so disabling the expander above is not by
+ * itself enough.
+ */
+&pcie0 {
+	/delete-property/ wake-gpios;
+};
+
+&pcie1 {
+	/delete-property/ wake-gpios;
+};
+
+/*
+ * CAN1_STBY / CAN2_STBY are expander lines on the RDK with no phyVIP
+ * equivalent. standby-gpios is optional for phy-can-transceiver, so dropping it
+ * leaves both transceivers permanently active, which is the correct behaviour
+ * here -- they are not software-controllable on this carrier.
+ */
+&can_transceiver1 {
+	/delete-property/ standby-gpios;
+};
+
+&can_transceiver2 {
+	/delete-property/ standby-gpios;
+};
+
+/* HD3SS3220 USB-C controller: not fitted (i2cdetect: 0x47 absent on i2c-3). */
+&{/soc/bus@42000000/i2c@42530000/usb-typec@47} {
+	status = "disabled";
+};
+
+/*
+ * The RV3028 is present, but the RDK routes its nINT to gpio_expander2.
+ * i2c_device_probe() resolves the IRQ through of_irq_get(), which returns
+ * -EPROBE_DEFER while the interrupt controller is missing, so the interrupt has
+ * to go explicitly or the RTC never probes. Alarm and wakeup are unavailable
+ * until the phyVIP routing for RTC_INT is confirmed -- gpio2[18] carries that
+ * name in the SoM gpio-line-names and is the likely candidate.
+ */
+&rv3028 {
+	/delete-property/ interrupt-parent;
+	/delete-property/ interrupts;
+	/delete-property/ wakeup-source;
+};

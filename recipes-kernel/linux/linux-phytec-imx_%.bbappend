@@ -26,7 +26,7 @@
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# HDMI via ITE IT6263 LVDS-to-HDMI bridge (imx95-phyflex-libra-rdk-2 / phyVIP)
+# HDMI via ITE IT6263 LVDS-to-HDMI bridge (imx95-phyflex-phyvip-1)
 #
 # Integrated from todo/meta-hdmi. That layer targeted the 6.12.34 NXP kernel,
 # which is not COMPATIBLE_MACHINE for this board -- everything here is guarded
@@ -41,37 +41,39 @@
 # ---------------------------------------------------------------------------
 # phyVIP carrier adaptation
 #
-# MACHINE is imx95-phyflex-libra-rdk-2 and the base DT it boots describes the
-# Libra RDK carrier, but the hardware is the phyVIP carrier
-# (PV-05832-001-1645-0-004). The phyVIP has no I2C GPIO expanders, so the two
-# ti,tcal6416 nodes at 0x21 never probe and fw_devlink parks their consumers --
-# including 4c300000.pcie, which is the PCIe root complex the Kinara Ara-2 sits
-# behind -- in permanent deferred probe.
+# MACHINE imx95-phyflex-phyvip-1 gets its own base device tree,
+# imx95-phyflex-phyvip.dts. It is not part of the kernel tree: it ships in this
+# layer, #includes imx95-phyflex-libra-rdk.dts and corrects the carrier
+# differences -- chiefly that the phyVIP has no I2C GPIO expanders. Left
+# uncorrected, the two ti,tcal6416 at 0x21 never probe and fw_devlink parks
+# their consumers, 4c300000.pcie among them: the root complex the Kinara Ara-2
+# sits behind, which is why the accelerator did not show up in lspci at all.
 #
-# See the header of imx95-phyflex-libra-rdk-2-phyvip-carrier.dtso for the full
-# analysis. Long term this should become a proper phyVIP MACHINE with its own
-# device tree instead of an overlay on top of a foreign carrier's DT.
+# See the header of imx95-phyflex-phyvip.dts for the full analysis.
+#
+# The base DTB is listed in KERNEL_DEVICETREE in the machine conf, where it has
+# to stay first so kernel-fitimage picks it as the FIT default configuration.
+# Only the HDMI overlay is appended here.
 # ---------------------------------------------------------------------------
 
 # Search paths are harmless for other machines; only SRC_URI below is guarded.
 FILESEXTRAPATHS:prepend := "${THISDIR}/linux-phytec-imx-hdmi:${THISDIR}/linux-phytec-imx-phyvip:"
 
-SRC_URI:append:imx95-phyflex-libra-rdk-2 = " \
+SRC_URI:append:imx95-phyflex-phyvip-1 = " \
     file://it6263-hdmi.cfg \
-    file://imx95-phyflex-libra-rdk-2-it6263-hdmi.dtso \
+    file://imx95-phyflex-phyvip-it6263-hdmi.dtso \
     file://0001-drm-imx95-ldb-relax-pixel-clock-tolerance.patch \
-    file://imx95-phyflex-libra-rdk-2-phyvip-carrier.dtso \
+    file://imx95-phyflex-phyvip.dts \
 "
 
-KERNEL_DEVICETREE:append:imx95-phyflex-libra-rdk-2 = " \
-    freescale/imx95-phyflex-libra-rdk-2-it6263-hdmi.dtbo \
-    freescale/imx95-phyflex-libra-rdk-2-phyvip-carrier.dtbo \
-"
+KERNEL_DEVICETREE:append:imx95-phyflex-phyvip-1 = " freescale/imx95-phyflex-phyvip-it6263-hdmi.dtbo"
 
-# The overlays are not part of the kernel tree, so drop them in before the DTS
-# Makefile is evaluated. kernel-devicetree builds them via KERNEL_DEVICETREE.
-do_configure:prepend:imx95-phyflex-libra-rdk-2() {
-    install -m 0644 ${UNPACKDIR}/imx95-phyflex-libra-rdk-2-it6263-hdmi.dtso \
-        ${UNPACKDIR}/imx95-phyflex-libra-rdk-2-phyvip-carrier.dtso \
+# Neither the board DTS nor the overlay is part of the kernel tree, so drop them
+# in before the DTS Makefile is evaluated. No Makefile edit is needed:
+# kernel-devicetree builds each KERNEL_DEVICETREE entry as an explicit make
+# target, which scripts/Makefile.lib's %.dtb/%.dtso pattern rules resolve.
+do_configure:prepend:imx95-phyflex-phyvip-1() {
+    install -m 0644 ${UNPACKDIR}/imx95-phyflex-phyvip.dts \
+        ${UNPACKDIR}/imx95-phyflex-phyvip-it6263-hdmi.dtso \
         ${S}/arch/${ARCH}/boot/dts/freescale/
 }
