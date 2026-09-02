@@ -101,3 +101,112 @@
 	/delete-property/ interrupts;
 	/delete-property/ wakeup-source;
 };
+
+/*
+ * WLAN/Bluetooth -- BDE-BW3351UP1 (TI CC33xx), schematic sheet "WLAN/Bluetooth",
+ * designator U14. This is the largest carrier difference after the missing GPIO
+ * expanders, and it is NOT what the RDK fits: the Libra RDK carries an NXP
+ * IW612/88W8987 that the out-of-tree nxp-wlan module claims by SDIO ID alone,
+ * with no device tree child at all.
+ *
+ * Modelled on PHYTEC's own working reference for the same chip family,
+ * k3-am625-phyverso-evcs-cc3351.dtso in linux-phytec-ti (v6.12.49-11.02.02-phy).
+ * Deviations from it are called out below.
+ *
+ * Signal routing taken from the schematic and resolved against the FPSC pinout
+ * in imx95-phyflex-fpsc-g-som.dtsi:
+ *
+ *   SDIO      X_SD2_CLK/CMD/D0..D3 via R97..R102 (0R)  ->  FPSC SDIO = usdhc3
+ *   UART      X_UART2_RXD/TXD/RTS/CTS                  ->  FPSC UART2 = lpuart5
+ *   IRQ_WL    module pin 14, jumper J18 -> X_GPIO4     ->  gpio2[17] ("GPIO4")
+ *   IRQ_BLE   module pin  2, jumper J19 -> X_GPIO3     ->  gpio1[12] ("GPIO3")
+ *   nRESET    module pin 40 <- X_nRESET_OUT_1V8        ->  board reset, no GPIO
+ *
+ * Assembly, from the schematic's own stuffing convention -- sheet 1 states
+ * "Parts with property 'nm' are not mounted on PCB", and the WLAN/Bluetooth
+ * sheet carries no 'nm' at all (the marker does appear on 11 other sheets, so
+ * its absence here is meaningful): R97..R102, J18, J19 and U14 are all fitted.
+ *
+ * J18/J19 are 3-pin jumpers that steer the two SoM lines between the module
+ * and the CON1 expansion connector:
+ *
+ *   pin 1  ->  module IRQ (IRQ_WL on J18, IRQ_BLE on J19)
+ *   pin 2  ->  X_GPIO4 / X_GPIO3 from the SoM
+ *   pin 3  ->  GPIO4 / GPIO3 to the expansion connector (sheet 13, zone B1)
+ *
+ * Both are annotated 1+2, i.e. SoM line tied to the module interrupt, which is
+ * what this device tree assumes. The convention was cross-checked against
+ * J16/J17 on sheet 11, where the same kind of setting string next to the
+ * designator ("2+3") is spelled out in prose as the populated configuration.
+ * Inferred from the drawing, not from an assembly variant table -- if WLAN
+ * probes but never takes an interrupt, J18 is still the first thing to meter.
+ */
+
+/ {
+	/*
+	 * btti_uart_probe() calls devm_regulator_get_optional(dev, "cc33xx")
+	 * and bails out on any error, -ENODEV included -- despite the name,
+	 * the supply is mandatory or Bluetooth does not probe at all. phyVIP
+	 * has no software power switch for the module (VCC_3V3 and VCC_1V8 are
+	 * always on, nRESET comes from the board reset), so this is a fixed
+	 * always-on regulator, exactly as on the phyVERSO EVCS.
+	 */
+	reg_wifi: regulator-wifi {
+		compatible = "regulator-fixed";
+		regulator-name = "WIFI_EN";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+};
+
+&usdhc3 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	/*
+	 * SDIO function 2, as on the phyVERSO EVCS -- the CC33xx puts WLAN on
+	 * function 2, and the mmc core matches this node to the function by
+	 * reg. With reg = <1> the node would never attach and
+	 * cc33xx_probe_of() would return -ENODEV.
+	 *
+	 * compatible is "ti,cc3300" and not the reference's "ti,cc3301":
+	 * cc33xx_sdio_of_match_table[] in the SDK 1.0.2.10 driver this layer
+	 * forward-ports to 6.18 carries the single entry "ti,cc3300". The
+	 * reference targets the older 6.12 TI tree.
+	 *
+	 * Only interrupt index 0 is given. cc33xx_probe_of() reads index 0 as
+	 * the data interrupt and index 1 as a wake interrupt; IRQ_BLE belongs
+	 * to the Bluetooth side and is wired there as host-wakeup-gpios.
+	 */
+	cc33xx: wifi@2 {
+		compatible = "ti,cc3300";
+		reg = <2>;
+		interrupt-parent = <&gpio2>;
+		interrupts = <17 IRQ_TYPE_EDGE_RISING>;
+	};
+};
+
+/*
+ * FPSC UART2. The RDK puts Bluetooth on lpuart8 (FPSC UART1, shared with
+ * RS232/RS485) -- on phyVIP the module's UART goes to UART2 instead, so
+ * imx95-phyflex-libra-rdk-bluetooth-88w8987.dtbo does not apply to this board
+ * even though the machine still builds it as an available overlay.
+ *
+ * max-speed matches the phyVERSO reference. IRQ_BLE goes in as
+ * host-wakeup-gpios, not as "interrupts": btti_uart_host_wake_init() looks the
+ * line up with devm_gpiod_get_optional(dev, "host-wakeup") and ignores any
+ * interrupts property. This one really is optional.
+ */
+&lpuart5 {
+	uart-has-rtscts;
+	status = "okay";
+
+	bluetooth {
+		compatible = "ti,cc33xx-bt";
+		cc33xx-supply = <&reg_wifi>;
+		host-wakeup-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
+		max-speed = <115200>;
+	};
+};

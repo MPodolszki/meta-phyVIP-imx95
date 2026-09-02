@@ -1,28 +1,37 @@
 # ---------------------------------------------------------------------------
-# TI CC33xx WiFi/BT -- DEFERRED, intentionally not applied.
+# TI CC33xx WiFi/BT -- ENABLED for imx95-phyflex-phyvip-1.
 #
-# The patch series (and cc33xx.cfg) is still in recipes-kernel/linux/
-# linux-phytec-imx/ and forward-ported to 6.18.y, but it is not wired into
-# SRC_URI: WLAN is postponed on the phyVIP-imx95, and this board carries an
-# NXP IW612 (MACHINE_FEATURES "nxpiw612-sdio"), not a TI CC33xx -- there is no
-# cc33xx node in any imx95 device tree. The series originates from the 8MP
-# phyVIP / AM62 phyVERSO work; the imx8mp-phyflex-phyvip*.dts* and
-# k3-am625-phyverso-evcs-cc3351.dtso that used to sit next to these patches
-# were copy leftovers from those boards and have been removed.
+# Corrects an earlier assumption in this file. The phyVIP does not carry the
+# NXP IW612 the Libra RDK has: schematic PV-05832-001-1645-0-004, sheet
+# "WLAN/Bluetooth", designator U14 = BDE-BW3351UP1 -- a TI CC33xx module. That
+# is exactly what this patch series drives, and it is why the series was
+# written for the 8MP phyVIP / AM62 phyVERSO boards in the first place.
 #
-# To re-enable, restore the block below and guard it with the override of the
-# machine that actually has the CC33xx fitted -- it must NOT be a bare
-# SRC_URI:append, which would hit every machine using this kernel recipe:
+# The series applies cleanly to linux-phytec-imx 6.18.2 (verified with
+# patch(1) against work-shared/.../kernel-source, all five patches, no fuzz).
+# It adds drivers/net/wireless/ti/cc33xx and drivers/bluetooth/btti_* plus
+# their Kconfig/Makefile hooks; nothing outside those two directories is
+# touched, so other machines using this kernel recipe are unaffected -- and
+# SRC_URI is guarded by the machine override regardless.
 #
-#   FILESEXTRAPATHS:prepend := "${THISDIR}/linux-phytec-imx:"
-#   SRC_URI:append:<machine> = " \
-#       file://0001-wifi-cc33xx-update-driver-to-match-cc33xx-SDK-1.0.2..patch \
-#       file://0002-wifi-cc33xx-Integrate-cc33xx-into-wireless-ti-folder.patch \
-#       file://0001-bluetooth-test-for-applying-changes-of-ti-6.12-kerne.patch \
-#       file://0001-drivers-cc33xx-forward-port-cc33xx-1.0.2.10-SDK-to-6.patch \
-#       file://0002-bluetooth-btti-add-Kconfig-and-Makefile-entries-for-.patch \
-#       file://cc33xx.cfg \
-#   "
+# 0001-mac80211-test-for-applying-changes-from-6.12-ti-kern.patch is NOT and
+# must NOT be applied. Despite the name it is not a fix: it replaces 6.18's
+# net/mac80211/mlme.c and wpa.c with the 6.12 TI versions (2027 deletions
+# against 346 insertions), reverting the mac80211 core by six releases for the
+# whole image. It stays in the layer only as a record of the original TI drop.
+#
+# Firmware comes from ti-cc33xx-firmware.bb in this layer, whose blobs are
+# copied from PHYTEC's meta-phyverso-evcs (branch scarthgap) -- the same drop
+# the AM62 phyVERSO EVCS uses for its CC3351, so both boards stay on one
+# revision. linux-firmware would not have helped: it ships wl18xx, not cc33xx.
+#
+# Of the four files the driver names, only two are mandatory:
+#   cc33xx_2nd_loader.bin, cc33xx_fw.bin  -- container_download_and_wait()
+#       aborts the boot path if either is missing
+#   cc33xx-conf.bin  -- optional; cc33xx_ini_bin_init() logs "falling back to
+#       default config" and carries on. Shipped anyway.
+#   cc33xx-nvs.bin   -- optional, MAC address only; not in the phyVERSO drop
+#       either. Without it the MAC comes from EFUSE, else eth_random_addr().
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
@@ -57,9 +66,15 @@
 # ---------------------------------------------------------------------------
 
 # Search paths are harmless for other machines; only SRC_URI below is guarded.
-FILESEXTRAPATHS:prepend := "${THISDIR}/linux-phytec-imx-hdmi:${THISDIR}/linux-phytec-imx-phyvip:"
+FILESEXTRAPATHS:prepend := "${THISDIR}/linux-phytec-imx:${THISDIR}/linux-phytec-imx-hdmi:${THISDIR}/linux-phytec-imx-phyvip:"
 
 SRC_URI:append:imx95-phyflex-phyvip-1 = " \
+    file://0001-wifi-cc33xx-update-driver-to-match-cc33xx-SDK-1.0.2..patch \
+    file://0002-wifi-cc33xx-Integrate-cc33xx-into-wireless-ti-folder.patch \
+    file://0001-bluetooth-test-for-applying-changes-of-ti-6.12-kerne.patch \
+    file://0001-drivers-cc33xx-forward-port-cc33xx-1.0.2.10-SDK-to-6.patch \
+    file://0002-bluetooth-btti-add-Kconfig-and-Makefile-entries-for-.patch \
+    file://cc33xx.cfg \
     file://it6263-hdmi.cfg \
     file://imx95-phyflex-phyvip-it6263-hdmi.dtso \
     file://0001-drm-imx95-ldb-relax-pixel-clock-tolerance.patch \

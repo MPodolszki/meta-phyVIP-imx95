@@ -40,6 +40,7 @@ IMAGE_INSTALL:append = "${@bb.utils.contains('HAILO', '1', ' \
 IMAGE_INSTALL:append = "${@bb.utils.contains('KINARA', '1', ' \
     kinara-uiodma \
     kinara-ddr-bringup \
+    kinara-hwutils \
     uiodma-service \
     kinara-ara2-udev \
     kinara-ara2-service \
@@ -50,6 +51,22 @@ IMAGE_INSTALL:append = "${@bb.utils.contains('KINARA', '1', ' \
     kinara-ara2-uv \
     kinara-ara2-examples \
 ', '', d)}"
+
+# kinara-hwutils liefert die statisch gelinkten Bring-up-Binaries
+# (chip_info, program_pll, program_flash, active_enable) nach
+# ${bindir}/kinara -- Gegenstuecke zum DDR-Bundle unter
+# ${datadir}/rt-sdk-ara240_2.0.4/hw_utils/ddr_bringup.
+#
+# Bewusst NICHT installiert:
+#   kinara-proxy      -- alter standalone proxy_aarch64; die Runtime startet
+#                        proxy_ara240 aus kinara-ara2-runtime.
+#   kinara-ara2-data  -- abgeloeste Sammel-Recipe, kollidiert mit
+#                        -runtime/-libs/-tools/-examples/-udev/-service.
+
+# TI CC33xx (BDE-BW3351UP1) firmware. Blobs and recipe taken from PHYTEC's
+# meta-phyverso-evcs so phyVIP and the AM62 phyVERSO EVCS stay on one revision.
+# Machine-guarded: no other machine using this image has the module.
+IMAGE_INSTALL:append:imx95-phyflex-phyvip-1 = " ti-cc33xx-firmware"
 
 # Only exclude conflicting package when Kinara stack is enabled.
 PACKAGE_EXCLUDE:append = "${@bb.utils.contains('KINARA', '1', ' gstreamer1.0-plugins-good-xingmux', '', d)}"
