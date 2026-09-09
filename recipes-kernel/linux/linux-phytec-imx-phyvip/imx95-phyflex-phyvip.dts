@@ -166,6 +166,20 @@
 	#size-cells = <0>;
 
 	/*
+	 * Mandatory for the CC33xx, measured on the board 2026-09-03:
+	 * cc33xx_sdio_power_on() calls pm_runtime_get_sync(&card->dev), but the
+	 * mmc core only calls pm_runtime_enable() on that device inside an
+	 * "if (host->caps & MMC_CAP_POWER_OFF_CARD)" (drivers/mmc/core/sdio.c).
+	 * Without the cap, runtime PM stays disabled and get_sync returns
+	 * -EACCES, which the driver reports as
+	 *   cc33xx_sdio_power_on: failed to get_sync(-13)
+	 *   cc33xx: ERROR FW download failed
+	 * and no wlan interface ever appears. mmc_of_parse() in
+	 * drivers/mmc/core/host.c turns exactly this property into that cap.
+	 */
+	cap-power-off-card;
+
+	/*
 	 * SDIO function 2, as on the phyVERSO EVCS -- the CC33xx puts WLAN on
 	 * function 2, and the mmc core matches this node to the function by
 	 * reg. With reg = <1> the node would never attach and
