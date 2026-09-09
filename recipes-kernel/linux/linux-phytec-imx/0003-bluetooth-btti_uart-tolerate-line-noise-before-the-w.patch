@@ -1,0 +1,77 @@
+From: Michael Podolszki <m.podolszki@phytec.de>
+Date: Wed, 9 Sep 2026 15:20:00 +0200
+Subject: [PATCH] bluetooth: btti_uart: tolerate line noise before the wakeup
+ event
+
+btti_uart registers its HCI device only after the BLE core has sent its
+wakeup event (ff ff 02 04 2a 00 00), and the matcher insisted on the
+receive buffer being exactly that: seven bytes, byte for byte.
+
+On the phyVIP (CC33xx BDE-BW3351UP1 on lpuart5) the BLE core's TX line
+comes up from low to idle-high right before that event, which the lpuart
+delivers as a break and a handful of 0x00 bytes with a framing error. The
+first buffer therefore reads
+
+  00 00 00 00 ff ff 02 04 2a 00 00
+
+and was rejected as "Unexpected wakeup pattern". Since the event is sent
+exactly once per BLE_ENABLE, that left the driver in STATE_HW_ON with no
+hci device until the next cold start -- rebinding the serdev does not
+make the core repeat it.
+
+Look for the pattern anywhere in the buffer instead and accept it when it
+ends the buffer, so leading noise is skipped but anything following the
+event is still treated as unexpected. Log how much noise was skipped.
+
+Upstream-Status: Pending
+
+Signed-off-by: Michael Podolszki <m.podolszki@phytec.de>
+---
+ drivers/bluetooth/btti_uart.c | 33 ++++++++++++++++++++++++++-------
+ 1 file changed, 26 insertions(+), 7 deletions(-)
+
+--- a/drivers/bluetooth/btti_uart.c
++++ b/drivers/bluetooth/btti_uart.c
+@@ -442,17 +442,34 @@
+ 	struct btti_uart_dev *bdev = serdev_device_get_drvdata(serdev);
+ 	const u8 hw_wakeup_evt[] = {HCI_VENDOR_PKT, 0xff, 0x02, 0x04, 0x2a, 0x00, 0x00};
+ 
++	size_t i;
++
+ 	if (count < sizeof hw_wakeup_evt)
+ 		return 0; // Reject data until all bytes have been received
+ 
+-	if (count > sizeof hw_wakeup_evt)
+-		goto error;
+-
+-	if (0 != memcmp(&hw_wakeup_evt, data, sizeof hw_wakeup_evt))
+-		goto error;
+-
+-	btti_uart_sm_post_event(bdev, EVENT_HCI_WAKEUP_FRAME_RECEIVED);
+-	return count;
++	/*
++	 * The wakeup event is the first thing the BLE core ever sends, and its
++	 * TX line comes up from low to idle-high right before it. On the phyVIP
++	 * that edge arrives as a break plus a few 0x00 bytes (framing error on
++	 * the lpuart), so the first buffer reads e.g.
++	 *   00 00 00 00 ff ff 02 04 2a 00 00
++	 * -- the exact pattern, preceded by line noise. The event is only sent
++	 * once per BLE_ENABLE; rejecting the buffer for its length means no HCI
++	 * device until the next cold start. Accept the pattern anywhere in the
++	 * buffer as long as it ends the buffer, i.e. nothing real follows it.
++	 */
++	for (i = 0; i + sizeof hw_wakeup_evt <= count; i++) {
++		if (memcmp(hw_wakeup_evt, data + i, sizeof hw_wakeup_evt))
++			continue;
++		if (i + sizeof hw_wakeup_evt != count)
++			goto error;
++		if (i)
++			dev_info(&serdev->dev,
++				 "wakeup event after %zu bytes of line noise",
++				 i);
++		btti_uart_sm_post_event(bdev, EVENT_HCI_WAKEUP_FRAME_RECEIVED);
++		return count;
++	}
+ 
+ error:
+ 	dev_err(&serdev->dev, "Unexpected wakeup pattern");

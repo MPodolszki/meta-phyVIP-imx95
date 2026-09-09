@@ -1,0 +1,12 @@
+[Unit]
+Description=CC33xx: enable the BLE core via the WLAN driver (wakeup for btti_uart)
+After=sys-subsystem-net-devices-wlan0.device systemd-modules-load.service
+Wants=sys-subsystem-net-devices-wlan0.device
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/cc33xx-ble-enable.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

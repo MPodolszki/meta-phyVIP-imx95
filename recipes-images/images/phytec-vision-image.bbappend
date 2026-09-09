@@ -77,5 +77,10 @@ IMAGE_INSTALL:append:imx95-phyflex-phyvip-1 = " ti-cc33xx-firmware"
 #   PHYVIP_WLAN_PSK  = "geheim"
 IMAGE_INSTALL:append:imx95-phyflex-phyvip-1 = "${@' phyvip-wlan-config' if d.getVar('PHYVIP_WLAN_SSID') else ''}"
 
+# Bluetooth on the CC33xx needs the BLE core switched on after btti_uart is
+# listening (see recipes-connectivity/phyvip-bluetooth). Not tied to the WLAN
+# credentials above: Bluetooth works without a configured network.
+IMAGE_INSTALL:append:imx95-phyflex-phyvip-1 = " phyvip-bluetooth"
+
 # Only exclude conflicting package when Kinara stack is enabled.
 PACKAGE_EXCLUDE:append = "${@bb.utils.contains('KINARA', '1', ' gstreamer1.0-plugins-good-xingmux', '', d)}"

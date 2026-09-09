@@ -97,6 +97,7 @@ SRC_URI:append:imx95-phyflex-phyvip-1 = " \
     file://0001-bluetooth-test-for-applying-changes-of-ti-6.12-kerne.patch \
     file://0001-drivers-cc33xx-forward-port-cc33xx-1.0.2.10-SDK-to-6.patch \
     file://0002-bluetooth-btti-add-Kconfig-and-Makefile-entries-for-.patch \
+    file://0003-bluetooth-btti_uart-tolerate-line-noise-before-the-w.patch \
     file://cc33xx.cfg \
     file://it6263-hdmi.cfg \
     file://imx95-phyflex-phyvip-it6263-hdmi.dtso \
