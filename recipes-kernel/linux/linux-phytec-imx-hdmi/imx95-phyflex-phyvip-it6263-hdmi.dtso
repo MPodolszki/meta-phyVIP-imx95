@@ -1,10 +1,37 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Device Tree Overlay: ITE IT6263 LVDS-to-HDMI bridge
- * Target board: imx95-phyflex-libra-rdk-2
+ * Target board: imx95-phyflex-phyvip-1
  *
- * To enable at boot, add this line to overlays.txt:
- *   fdt_overlays=imx95-phyflex-libra-rdk-2-it6263-hdmi.dtbo
+ * Aktivierung in /boot/overlays.txt:
+ *   fit_overlay_conf=conf-imx95-phyflex-phyvip-it6263-hdmi.dtbo
+ *
+ * LDB-KANAL: channel@0, NICHT channel@1.
+ *
+ * Diese Datei stammt aus todo/meta-hdmi und war dort fuer das
+ * phyBOARD-Libra RDK geschrieben, wo die Bruecke an LVDS2 = LDB channel@1
+ * haengt. Auf dem phyVIP-Carrier ist die Belegung anders; die urspruenglich
+ * uebernommene channel@1-Fassung hat deshalb einen Kanal bespielt, der hier
+ * gar nicht angeschlossen ist. Aus dem Carrier-Schaltplan
+ * PV-05832-001-1645-0-004:
+ *
+ *   Blatt 11 "FPSC_Unused"  -> FPSC LVDS2 (Netze X_LVDS1_*) endet in
+ *                              No-Connects. LDB channel@1 ist tot.
+ *   Blatt 9  "FPSC_Connector" -> FPSC LVDS1 (Netze X_LVDS0_*) fuehrt nach
+ *                              13-C4/13-D4, also auf CON2.
+ *   Blatt 13 "Erweiterungsboard-Steckverbinder" -> X_LVDS0_* liegt auf CON2
+ *                              (X13X13). Dort sitzt die Bruecke.
+ *
+ * Messbar am Symptom: mit channel@1 blieb disp1pix auf 24 MHz mit
+ * Enable-Count 0, obwohl der Modeset fehlerfrei durchlief, und der IT6263
+ * meldete "failed to wait for video stable".
+ *
+ * PIXELTAKT: eingestellt auf 88,75 MHz = 1440x900@60.
+ * Der NXP-Fork des Treibers (drivers/gpu/drm/bridge/it6263.c, bindet trotz
+ * compatible "ite,it6263") fuehrt in it6263_bad_mode_db eine Sperrliste, in
+ * der unter anderem 1600x900@60 und 1280x1024@60 stehen. Der native Modus
+ * eines 1600x900-Monitors ist damit nicht erreichbar; 1440x900@60 ist der
+ * hoechste Modus, den dieser Treiber durchlaesst.
  */
  
 #include "imx95-pinfunc.h"
@@ -51,11 +78,11 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			/* Input: LVDS from LDB channel@1 (LVDS2 pins) */
+			/* Input: LVDS von LDB channel@0 (FPSC-LVDS1, Netze X_LVDS0_*, ueber CON2) */
 			port@0 {
 				reg = <0>;
 				it6263_in: endpoint {
-					remote-endpoint = <&lvds2_out>;
+					remote-endpoint = <&lvds1_out>;
 				};
 			};
 
@@ -92,32 +119,37 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	/*
-	 * LDBPLL for 1920x1080@60: pixel clock = 148.5 MHz
-	 * ldb_pll_div7 = LDBPLL / 7 → 1039.5 MHz / 7 = 148.5 MHz (exact)
-	 * LDBPLL_VCO = 1039.5 MHz * 3 = 3118.5 MHz  (RDIV=3)
-	 * disp1pix (clk_pix) takes ldb_pll_pixel (=ldb_pll_div7) automatically
+	 * LDBPLL fuer 1440x900@60: Pixeltakt = 88,75 MHz
+	 * ldb_pll_div7 = LDBPLL / 7 -> 621,25 MHz / 7 = 88,75 MHz (exakt)
+	 * LDBPLL_VCO   = 621,25 MHz * 5 = 3106,25 MHz, dasselbe ~3-GHz-Band wie
+	 * die Hersteller-Referenz imx95-phyflex-libra-rdk-lvds.dtsi (3040,8 MHz).
+	 *
+	 * Vorher stand hier 148,5 MHz fuer 1920x1080@60. Das passte zu keinem
+	 * Modus, den DRM an diesem Monitor anbietet, und der Kommentar
+	 * "disp1pix nimmt ldb_pll_pixel automatisch" stimmt nicht: disp1pix blieb
+	 * gemessen auf 24 MHz stehen.
 	 */
 	assigned-clocks = <&scmi_clk IMX95_CLK_LDBPLL_VCO>,
 			  <&scmi_clk IMX95_CLK_LDBPLL>;
-	assigned-clock-rates = <3118500000>, <1039500000>;
+	assigned-clock-rates = <3106250000>, <621250000>;
 	status = "okay";
 
-	channel@1 {
+	channel@0 {
 		#address-cells = <1>;
 		#size-cells = <0>;
 		status = "okay";
-		reg = <1>;
+		reg = <0>;
 
 		port@1 {
 			reg = <1>;
-			lvds2_out: endpoint {
+			lvds1_out: endpoint {
 				remote-endpoint = <&it6263_in>;
 			};
 		};
 	};
 };
 
-&ldb1_phy {
+&ldb0_phy {
 	status = "okay";
 };
 
@@ -126,8 +158,8 @@
 	#size-cells = <0>;
 	status = "okay";
 
-	channel@1 {
-		reg = <1>;
+	channel@0 {
+		reg = <0>;
 		status = "okay";
 	};
 };

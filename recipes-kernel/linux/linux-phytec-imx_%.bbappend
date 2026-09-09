@@ -83,6 +83,22 @@ SRC_URI:append:imx95-phyflex-phyvip-1 = " \
 
 KERNEL_DEVICETREE:append:imx95-phyflex-phyvip-1 = " freescale/imx95-phyflex-phyvip-it6263-hdmi.dtbo"
 
+# The base DTB must carry a /__symbols__ node or U-Boot cannot resolve the HDMI
+# overlay at runtime -- measured 2026-09-03, the board stopped at:
+#   failed on fdt_overlay_apply(): FDT_ERR_NOTFOUND
+#   base fdt does not have a /__symbols__ node
+#   make sure you've compiled with -@
+#   Could not find a valid device tree / Boot failed (err=-14)
+#
+# imx95-phyflex-libra-rdk.dtb gets -@ for free because the DTS Makefile lists it
+# as the base of several *-dtbs composite targets, and the kernel build adds the
+# flag for an overlay base by itself. imx95-phyflex-phyvip.dts is not in that
+# Makefile at all (see do_configure below), so nothing adds it here and the
+# resulting DTB has no symbols. kernel-devicetree.bbclass exports
+# KERNEL_DTC_FLAGS as DTC_FLAGS around the dtb targets; meta-phytec sets this
+# only in linux-phytec_6.6.y-phy.bb, not in the imx recipe.
+KERNEL_DTC_FLAGS:append:imx95-phyflex-phyvip-1 = " -@"
+
 # Neither the board DTS nor the overlay is part of the kernel tree, so drop them
 # in before the DTS Makefile is evaluated. No Makefile edit is needed:
 # kernel-devicetree builds each KERNEL_DEVICETREE entry as an explicit make
