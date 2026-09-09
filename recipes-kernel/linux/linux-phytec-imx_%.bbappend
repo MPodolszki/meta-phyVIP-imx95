@@ -65,6 +65,29 @@
 # Only the HDMI overlay is appended here.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# DPU blit engine: "failed to get dmabuf" log flood (imx95-phyflex-phyvip-1)
+#
+# weston runs on the g2d renderer here (weston.ini: use-g2d=true, and the
+# process has libg2d-dpu.so.2.4.0 mapped), so every repaint goes through the
+# DPU blit ioctls -- and each one logged an unthrottled drm_err() per plane.
+#
+# Instrumenting the error path to print the descriptor and errno showed what
+# is actually being handed in: fd 900, 438, 200, 168, all -EBADF, none of them
+# open in the compositor. The values look like geometry rather than
+# descriptors, so libg2d and the ioctl disagree about the layout of the buffer
+# behind user_data. libg2d is a binary blob, so that half is not ours to fix,
+# and it does no harm: the affected planes carry no data, the addresses
+# programmed into the DPU come from the command list, and the picture is
+# correct -- verified on the board.
+#
+# The patch therefore demotes both dma_buf_get() failures to drm_dbg() (still
+# reachable via drm.debug, just not in everyone's dmesg), rejects fd <= 0 as
+# "plane unused" -- 0 is a valid descriptor, so the old "fd < 0" guard let it
+# through -- and stops adding the plane offset to an address that was never
+# obtained.
+# ---------------------------------------------------------------------------
+
 # Search paths are harmless for other machines; only SRC_URI below is guarded.
 FILESEXTRAPATHS:prepend := "${THISDIR}/linux-phytec-imx:${THISDIR}/linux-phytec-imx-hdmi:${THISDIR}/linux-phytec-imx-phyvip:"
 
@@ -79,6 +102,7 @@ SRC_URI:append:imx95-phyflex-phyvip-1 = " \
     file://imx95-phyflex-phyvip-it6263-hdmi.dtso \
     file://0001-drm-imx95-ldb-relax-pixel-clock-tolerance.patch \
     file://imx95-phyflex-phyvip.dts \
+    file://0001-drm-imx-dpu95-do-not-treat-fd-0-as-a-dmabuf-in-the-b.patch \
 "
 
 KERNEL_DEVICETREE:append:imx95-phyflex-phyvip-1 = " freescale/imx95-phyflex-phyvip-it6263-hdmi.dtbo"
